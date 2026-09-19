@@ -78,7 +78,7 @@ cp data/socket-proxy/.env.sample data/socket-proxy/.env
 cp data/traefik/.env.sample data/traefik/.env
 cp data/traefik/traefik.yml.sample data/traefik/traefik.yml
 mkdir -p data/traefik/certs
-touch data/traefik/certs/dns_letsencrypt.json
+echo '{}' > data/traefik/certs/dns_letsencrypt.json
 chmod 600 data/traefik/certs/dns_letsencrypt.json
 cp data/traefik/dynamic_conf/http.middlewares.default.yml.sample data/traefik/dynamic_conf/http.middlewares.default.yml
 cp data/traefik/dynamic_conf/http.middlewares.traefik-bouncer.yml.sample data/traefik/dynamic_conf/http.middlewares.traefik-bouncer.yml
@@ -143,27 +143,21 @@ Ohne gültiges Token schlägt die Zertifikatsausstellung fehl.
 
 2. `acquis.yaml` wurde bereits aus dem Sample kopiert (Schritt 4) und deckt `auth.log`/`syslog` sowie Traefik-Access-Log ab. Zusätzliche Datenquellen bitte nicht hier, sondern in separaten Dateien unter `data/crowdsec/config/acquis.d/` ablegen (CrowdSec lädt das Verzeichnis automatisch).
 
-3. AppSec/OWASP-CRS-Hub-Items installieren:
-    ```bash
-    docker exec crowdsec cscli collections install crowdsecurity/appsec-crs-inband
-    docker restart crowdsec
-    ```
+3. AppSec-Konfiguration: Die für `data/crowdsec/config/acquis.d/appsec.yaml` benötigten Hub-Items werden bereits beim ersten CrowdSec-Start automatisch installiert (siehe `COLLECTIONS` und `APPSEC_CONFIGS` in `data/crowdsec/.env`). Beim Bearbeiten von `acquis.d/appsec.yaml` darauf achten, dass alle unter `appsec_configs:` referenzierten Namen entweder aus dem Hub installiert werden oder als lokale Datei existieren (z. B. `custom/hooks` → `data/crowdsec/config/appsec-configs/custom-hooks.yaml`).
 
 4. In `data/crowdsec/config/appsec-configs/custom-hooks.yaml` die Platzhalter `<IP-1>`, `<IP-2>`, `<IP-3>` durch die IPs Ihrer vertrauenswürdigen internen Automatisierungs-Hosts ersetzen (z. B. Watchtower/shoutrrr-Absender, die an ntfy melden). Nicht benötigte Platzhalter entfernen; die gesamte Regel entfernen, wenn Sie keine solchen Ausnahmen brauchen.
 
-5. Bouncer-Keys erzeugen und in CrowdSec registrieren. Traefik-Plugin- und Firewall-Bouncer bekommen je einen eigenen Key. `cscli` registriert den Bouncer sofort und gibt den Key zurück:
+5. Bouncer-Keys erzeugen. Traefik-Plugin- und Firewall-Bouncer bekommen je einen eigenen Key. Die Keys werden in die `.env` geschrieben und beim ersten Start des CrowdSec-Containers über die `BOUNCER_KEY_*`-Umgebungsvariablen automatisch als Bouncer registriert:
     ```bash
-    docker exec crowdsec cscli bouncers add traefik-bouncer \
-      -k "$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)"
-    docker exec crowdsec cscli bouncers add firewall-bouncer \
-      -k "$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)"
+    BOUNCER_KEY_TRAEFIK=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)
+    BOUNCER_KEY_FIREWALL=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)
+    echo "BOUNCER_KEY_TRAEFIK=$BOUNCER_KEY_TRAEFIK" >> .env
+    echo "BOUNCER_KEY_FIREWALL=$BOUNCER_KEY_FIREWALL" >> .env
     ```
-    Die von `cscli` ausgegebenen Keys anschließend in die `.env` eintragen:
+    Die `tr -dc 'A-Za-z0-9'`-Filterung verhindert Sonderzeichen wie `+`, `/`, `=`, die in `.env`-Werten oder URLs Probleme machen. Zur Kontrolle nach dem nächsten Start:
+    ```bash
+    docker exec crowdsec cscli bouncers list
     ```
-    BOUNCER_KEY_TRAEFIK=<Traefik-Key>
-    BOUNCER_KEY_FIREWALL=<Firewall-Key>
-    ```
-    Die `tr -dc 'A-Za-z0-9'`-Filterung verhindert Sonderzeichen wie `+`, `/`, `=`, die in `.env`-Werten oder URLs Probleme machen.
 
 6. Den `BOUNCER_KEY_FIREWALL` separat notieren — er wird in Schritt 8 in der Firewall-Bouncer-Konfiguration außerhalb dieses Projekts benötigt.
 
@@ -255,6 +249,7 @@ Beim Aufsetzen des Stacks auf einem neuen Host sind mindestens folgende Werte ho
 | E-Mail für Let's Encrypt | `data/traefik/traefik.yml` | Pro Betreiber |
 | Firewall-Bouncer `api_url` | `/etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml` | Adressiert den `crowdsec`-Container über das jeweilige Docker-Netz |
 | AppSec-Custom-Hooks-IPs | `data/crowdsec/config/appsec-configs/custom-hooks.yaml` | Vertrauenswürdige interne Automatisierungs-Hosts |
+| `forwardedHeadersCustomName` | `data/traefik/dynamic_conf/http.middlewares.traefik-bouncer.yml` | Standardwert `CF-Connecting-IP` setzt Cloudflare-Proxy voraus (orange cloud). Ohne Proxy leer lassen oder auf den tatsächlich verwendeten Header umstellen |
 | ggf. Docker-Netzwerke | Compose-Dateien / Override | Wenn bereits andere Stacks Netz-Namen belegen |
 | ggf. statische Backend-IPs | `data/traefik/dynamic_conf/` | Nur wenn Router auf feste IPs zeigen |
 

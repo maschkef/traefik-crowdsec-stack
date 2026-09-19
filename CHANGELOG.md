@@ -95,8 +95,10 @@ Diese Datei dokumentiert die Abweichungen dieses Forks gegenüber
   (Zone:Read + DNS:Edit, alle Zonen) und expliziter Warnung vor
   Global API Key sowie der nicht existierenden Variable
   `CF_DNS_API_KEY`.
-- Bouncer-Key-Erzeugung via `cscli bouncers add` mit
-  `tr -dc 'A-Za-z0-9'`-Filterung des Zufalls-Strings.
+- Bouncer-Key-Erzeugung: `openssl rand -base64 48 | tr -dc 'A-Za-z0-9'
+  | head -c 32`. Die Registrierung erfolgt automatisch beim ersten
+  Container-Start ueber die `BOUNCER_KEY_*`-Umgebungsvariablen des
+  CrowdSec-Docker-Images.
 - Neue Abschnitte „Abweichungen vom Upstream", „Pro Host anzupassen"
   und „Host-/dienstspezifische Overrides" (nur der Override-
   Mechanismus, ohne konkrete Dienste zu nennen).

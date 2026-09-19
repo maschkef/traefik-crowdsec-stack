@@ -121,11 +121,12 @@ for file_pair in "${files_to_copy[@]}"; do
   fi
 done
 
-# ACME-Speicher fuer DNS-01 (Cloudflare) anlegen. lego erstellt die Datei sonst
-# selbst, chmod 600 setzen wir bereits vorab, damit sie nicht world-readable
+# ACME-Speicher fuer DNS-01 (Cloudflare) anlegen. Mit "{}" statt leer, damit
+# Traefik/lego beim ersten Start keinen JSON-Parse-Fehler auf eine 0-Byte-
+# Datei wirft. chmod 600 setzen wir vorab, damit sie nicht world-readable
 # entsteht.
 sudo mkdir -p "${SCRIPT_DIR}/data/traefik/certs"
-sudo touch "${SCRIPT_DIR}/data/traefik/certs/dns_letsencrypt.json"
+echo '{}' | sudo tee "${SCRIPT_DIR}/data/traefik/certs/dns_letsencrypt.json" > /dev/null
 sudo chmod 600 "${SCRIPT_DIR}/data/traefik/certs/dns_letsencrypt.json"
 
 step_done "Dateien kopiert und Rechte gesetzt"

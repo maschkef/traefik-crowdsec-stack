@@ -13,10 +13,12 @@
 # Regel eine Ausnahme und erhaelt die Erkennung/Protokollierung fuer
 # alle anderen Regeln. Kein blinder Fleck.
 #
-# Wichtig: keine '#'-Kommentare *innerhalb* des filter:-Strings verwenden,
-# '#' ist dort Platzhalter der expr-Syntax.
+# Wichtig: filter unbedingt in Anfuehrungszeichen setzen. Das '#' in
+# '#.name' ist expr-Platzhalter fuer das aktuelle Listenelement in
+# `any(...)` — YAML wuerde ein unquotiertes '#' (mit Leerzeichen davor)
+# jedoch als Kommentar interpretieren und den Filter abschneiden.
 name: custom/hooks
 on_match:
-  - filter: any(evt.Appsec.MatchedRules, #.name == "native_rule:920420") && req.RemoteAddr in ["<IP-1>", "<IP-2>", "<IP-3>"]
+  - filter: 'any(evt.Appsec.MatchedRules, #.name == "native_rule:920420") && req.RemoteAddr in ["<IP-1>", "<IP-2>", "<IP-3>"]'
     apply:
       - SetRemediation("allow")
