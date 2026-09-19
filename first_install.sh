@@ -62,7 +62,7 @@ step_done "apache2-utils installiert"
 
 # Überprüfen, ob Container laufen
 show_step $current_step $total_steps "Überprüfen von laufenden Containern"
-containers=("crowdsec" "socket-proxy" "traefik" "traefik_crowdsec_bouncer")
+containers=("crowdsec" "socket-proxy" "traefik")
 for container in "${containers[@]}"; do
   if [ "$(docker ps -q -f name=$container)" ]; then
     echo -e "${red}Der Docker-Container '$container' läuft bereits. Das Skript wird abgebrochen.${nc}"
@@ -100,7 +100,6 @@ files_to_copy=(
   "data/traefik/dynamic_conf/http.middlewares.traefik-bouncer.yml.sample data/traefik/dynamic_conf/http.middlewares.traefik-bouncer.yml"
   "data/traefik/dynamic_conf/http.middlewares.traefik-dashboard-auth.yml.sample data/traefik/dynamic_conf/http.middlewares.traefik-dashboard-auth.yml"
   "data/traefik/dynamic_conf/tls.yml.sample data/traefik/dynamic_conf/tls.yml"
-  "data/traefik-crowdsec-bouncer/.env.sample data/traefik-crowdsec-bouncer/.env"
 )
 
 # Dateien kopieren oder das Skript beenden, wenn eine .sample Datei fehlt

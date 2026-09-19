@@ -87,7 +87,6 @@ cp data/traefik/dynamic_conf/http.middlewares.gzip.yml.sample data/traefik/dynam
 cp data/traefik/dynamic_conf/http.middlewares.traefik-bouncer.yml.sample data/traefik/dynamic_conf/http.middlewares.traefik-bouncer.yml
 cp data/traefik/dynamic_conf/http.middlewares.traefik-dashboard-auth.yml.sample data/traefik/dynamic_conf/http.middlewares.traefik-dashboard-auth.yml
 cp data/traefik/dynamic_conf/tls.yml.sample data/traefik/dynamic_conf/tls.yml
-cp data/traefik-crowdsec-bouncer/.env.sample data/traefik-crowdsec-bouncer/.env
 ```
 
 ### 5. SSL-Zertifikate und Domain konfigurieren
