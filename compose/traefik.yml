@@ -11,6 +11,8 @@ services:
       # angepasst: LAPI-Key des nativen Plugin-Bouncers in den Container reichen,
       # damit '{{ env "BOUNCER_KEY_TRAEFIK" }}' im File-Provider aufloesen kann.
       - BOUNCER_KEY_TRAEFIK=${BOUNCER_KEY_TRAEFIK}
+      # angepasst: DNS-01 via Cloudflare API-Token (scoped, kein Global API Key).
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
     hostname: ${SERVICES_TRAEFIK_HOSTNAME:-traefik}
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]
@@ -26,7 +28,7 @@ services:
       traefik.http.routers.traefik-dashboard.rule: ${SERVICES_TRAEFIK_LABELS_TRAEFIK_HOST:-HOST(`traefik.yourdomain.com`)}
       traefik.http.routers.traefik-dashboard.service: api@internal
       traefik.http.routers.traefik-dashboard.tls: "true"
-      traefik.http.routers.traefik-dashboard.tls.certresolver: tls_resolver
+      traefik.http.routers.traefik-dashboard.tls.certresolver: myresolver
       traefik.http.services.traefik-dashboard.loadbalancer.sticky.cookie.httpOnly: "true"
       traefik.http.services.traefik-dashboard.loadbalancer.sticky.cookie.secure: "true"
       traefik.http.routers.pingweb.rule: PathPrefix(`/ping`)
@@ -62,7 +64,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - ${ABSOLUTE_PATH}/data/traefik/traefik.yml:/etc/traefik/traefik.yml
       - ${ABSOLUTE_PATH}/data/traefik/.htpasswd:/etc/traefik/.htpasswd
-      - ${ABSOLUTE_PATH}/data/traefik/certs/acme_letsencrypt.json:/etc/traefik/acme_letsencrypt.json
-      - ${ABSOLUTE_PATH}/data/traefik/certs/tls_letsencrypt.json:/etc/traefik/tls_letsencrypt.json
+      # angepasst: DNS-01-Zertifikatsspeicher (myresolver);
+      # die frueheren acme_/tls_letsencrypt.json-Mounts entfallen.
+      - ${ABSOLUTE_PATH}/data/traefik/certs/dns_letsencrypt.json:/etc/traefik/dns_letsencrypt.json
       - ${ABSOLUTE_PATH}/data/traefik/dynamic_conf:/etc/traefik/dynamic_conf:ro
       - /var/log/traefik/:/var/log/traefik/

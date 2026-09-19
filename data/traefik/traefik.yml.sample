@@ -5,18 +5,19 @@ metrics:
   prometheus:
     addRoutersLabels: true
 
+# angepasst: DNS-01 via Cloudflare statt HTTP-01 / TLS-ALPN.
+# Wildcard-faehig und funktioniert auch fuer Dienste, die nicht oeffentlich
+# erreichbar sind. Auth via CF_DNS_API_TOKEN (siehe README, .env.sample).
 certificatesResolvers:
-  http_resolver:
+  myresolver:
     acme:
       email: "deine@email.de"
-      storage: "/etc/traefik/acme_letsencrypt.json"
-      httpChallenge:
-        entryPoint: web
-  tls_resolver:
-    acme:
-      email: "deine@email.de"
-      storage: "/etc/traefik/tls_letsencrypt.json"
-      tlsChallenge: {}
+      storage: "/etc/traefik/dns_letsencrypt.json"
+      dnsChallenge:
+        provider: cloudflare
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"
 
 entryPoints:
   ping:
