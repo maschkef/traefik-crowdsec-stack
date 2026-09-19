@@ -1,0 +1,14 @@
+---
+# AppSec-Datenquelle fuer den Traefik-Plugin-Bouncer.
+# Der Bouncer verbindet sich intern auf Port 7422 und uebergibt eingehende
+# Requests an den CrowdSec-AppSec-Layer zur Bewertung (Virtual Patching +
+# OWASP CRS in-band). custom/hooks enthaelt lokale False-Positive-Ausnahmen.
+source: appsec
+name: appsec
+listen_addr: 0.0.0.0:7422
+appsec_configs:
+  - crowdsecurity/appsec-default
+  - crowdsecurity/crs-inband
+  - custom/hooks
+labels:
+  type: appsec

@@ -1,0 +1,14 @@
+---
+# Basis-Datenquellen fuer CrowdSec: Host-Syslog und Traefik-Access-Log.
+# Zusaetzliche host-/dienstspezifische Datenquellen (z. B. Nextcloud) gehoeren
+# in eigene Dateien unter acquis.d/, nicht hier.
+filenames:
+  - /var/log/auth.log
+  - /var/log/syslog
+labels:
+  type: syslog
+---
+filenames:
+  - /var/log/traefik/access.log
+labels:
+  type: traefik

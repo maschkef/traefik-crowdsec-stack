@@ -1,0 +1,22 @@
+---
+# Lokale False-Positive-Ausnahmen fuer die OWASP-CRS-Regel 920420
+# ("Request content type is not allowed by policy").
+#
+# Warum die Ausnahme noetig ist:
+# shoutrrr/Watchtower und aehnliche Automatisierungs-Clients senden
+# Benachrichtigungen an ntfy mit Content-Types, die nicht in der
+# CRS-Positivliste stehen. CRS-inband wuerde diese Requests sonst blocken.
+#
+# Warum ueber custom-hooks statt cscli allowlists:
+# Eine Allowlist wuerde die betreffenden Quell-IPs komplett aus der
+# CrowdSec-Bewertung nehmen. Der Hook hier setzt nur fuer diese eine
+# Regel eine Ausnahme und erhaelt die Erkennung/Protokollierung fuer
+# alle anderen Regeln. Kein blinder Fleck.
+#
+# Wichtig: keine '#'-Kommentare *innerhalb* des filter:-Strings verwenden,
+# '#' ist dort Platzhalter der expr-Syntax.
+name: custom/hooks
+on_match:
+  - filter: any(evt.Appsec.MatchedRules, #.name == "native_rule:920420") && req.RemoteAddr in ["<IP-1>", "<IP-2>", "<IP-3>"]
+    apply:
+      - SetRemediation("allow")
