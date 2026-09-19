@@ -92,14 +92,13 @@ files_to_copy=(
   "data/socket-proxy/.env.sample data/socket-proxy/.env"
   "data/traefik/.env.sample data/traefik/.env"
   "data/traefik/traefik.yml.sample data/traefik/traefik.yml"
-  "data/traefik/certs/acme_letsencrypt.json.sample data/traefik/certs/acme_letsencrypt.json"
-  "data/traefik/certs/tls_letsencrypt.json.sample data/traefik/certs/tls_letsencrypt.json"
   "data/traefik/dynamic_conf/http.middlewares.default.yml.sample data/traefik/dynamic_conf/http.middlewares.default.yml"
-  "data/traefik/dynamic_conf/http.middlewares.default-security-headers.yml.sample data/traefik/dynamic_conf/http.middlewares.default-security-headers.yml"
-  "data/traefik/dynamic_conf/http.middlewares.gzip.yml.sample data/traefik/dynamic_conf/http.middlewares.gzip.yml"
   "data/traefik/dynamic_conf/http.middlewares.traefik-bouncer.yml.sample data/traefik/dynamic_conf/http.middlewares.traefik-bouncer.yml"
   "data/traefik/dynamic_conf/http.middlewares.traefik-dashboard-auth.yml.sample data/traefik/dynamic_conf/http.middlewares.traefik-dashboard-auth.yml"
   "data/traefik/dynamic_conf/tls.yml.sample data/traefik/dynamic_conf/tls.yml"
+  "data/crowdsec/config/acquis.yaml.sample data/crowdsec/config/acquis.yaml"
+  "data/crowdsec/config/acquis.d/appsec.yaml.sample data/crowdsec/config/acquis.d/appsec.yaml"
+  "data/crowdsec/config/appsec-configs/custom-hooks.yaml.sample data/crowdsec/config/appsec-configs/custom-hooks.yaml"
 )
 
 # Dateien kopieren oder das Skript beenden, wenn eine .sample Datei fehlt
@@ -110,6 +109,9 @@ for file_pair in "${files_to_copy[@]}"; do
   src_path="${SCRIPT_DIR}/${src}"
   dst_path="${SCRIPT_DIR}/${dst}"
 
+  # Zielverzeichnis anlegen (fuer neue Sample-Zielpfade wie acquis.d/, appsec-configs/)
+  mkdir -p "$(dirname "$dst_path")"
+
   if [ -f "$src_path" ]; then
     cp "$src_path" "$dst_path"
     echo "Kopiere ${src_path} nach ${dst_path}"
@@ -119,8 +121,12 @@ for file_pair in "${files_to_copy[@]}"; do
   fi
 done
 
-sudo chmod 600 data/traefik/certs/acme_letsencrypt.json
-sudo chmod 600 data/traefik/certs/tls_letsencrypt.json
+# ACME-Speicher fuer DNS-01 (Cloudflare) anlegen. lego erstellt die Datei sonst
+# selbst, chmod 600 setzen wir bereits vorab, damit sie nicht world-readable
+# entsteht.
+sudo mkdir -p "${SCRIPT_DIR}/data/traefik/certs"
+sudo touch "${SCRIPT_DIR}/data/traefik/certs/dns_letsencrypt.json"
+sudo chmod 600 "${SCRIPT_DIR}/data/traefik/certs/dns_letsencrypt.json"
 
 step_done "Dateien kopiert und Rechte gesetzt"
 ((current_step++))
@@ -153,11 +159,14 @@ step_done "OpenSSL überprüft"
 ((current_step++))
 
 # Bouncer-Passwörter generieren
+# Zeichenklasse bewusst auf [A-Za-z0-9] beschraenkt: Sonderzeichen wie
+# + / = oder Shell-Metazeichen wuerden in .env-Werten und URLs Probleme
+# machen (z. B. beim Parsen der crowdsecLapiKey-Header).
 show_step $current_step $total_steps "Generiere Bouncer-Passwörter"
-BOUNCER_KEY_TRAEFIK_PASSWORD=$(openssl rand -base64 48 | tr -dc 'a-zA-Z0-9!@#$%^&*()-_=+[]{}<>?|')
+BOUNCER_KEY_TRAEFIK_PASSWORD=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)
 echo -e "\nBOUNCER_KEY_TRAEFIK=$BOUNCER_KEY_TRAEFIK_PASSWORD" >> ${SCRIPT_DIR}/.env
 sleep 3
-BOUNCER_KEY_FIREWALL_PASSWORD=$(openssl rand -base64 48 | tr -dc 'a-zA-Z0-9!@#$%^&*()-_=+[]{}<>?|')
+BOUNCER_KEY_FIREWALL_PASSWORD=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)
 echo "BOUNCER_KEY_FIREWALL=$BOUNCER_KEY_FIREWALL_PASSWORD" >> ${SCRIPT_DIR}/.env
 step_done "Bouncer-Passwörter generiert"
 ((current_step++))
@@ -270,28 +279,15 @@ docker compose up crowdsec -d && docker compose down
 step_done "CrowdSec gestartet und heruntergefahren"
 ((current_step++))
 
-show_step $current_step $total_steps "CrowdSec Konfiguration anpassen"
+show_step $current_step $total_steps "CrowdSec-Konfiguration pruefen"
+# acquis.yaml wurde bereits aus dem Sample kopiert. Hier nur noch pruefen,
+# dass sie existiert, damit der spaetere CrowdSec-Start nicht ins Leere greift.
 acquis_file="${SCRIPT_DIR}/data/crowdsec/config/acquis.yaml"
 if [ ! -f "$acquis_file" ]; then
   echo -e "${red}Die Datei $acquis_file existiert nicht. Das Skript wird abgebrochen.${nc}"
   exit 1
 fi
-
-cat <<EOL > "$acquis_file"
-filenames:
-  - /var/log/auth.log
-  - /var/log/syslog
-labels:
-  type: syslog
----
-filenames:
-  - /var/log/traefik/access.log
-labels:
-  type: traefik
----
-EOL
-
-step_done "acquis.yaml bearbeitet"
+step_done "acquis.yaml vorhanden"
 ((current_step++))
 
 # Firewall-Auswahl
