@@ -64,8 +64,41 @@ acme_letsencrypt.json
 tls_letsencrypt.json
 !.sample
 
-data/crowdsec/config
+# angepasst: feingranular statt data/crowdsec/config, damit Sample-Dateien
+# in acquis.d/ und appsec-configs/ versioniert werden können.
+# Hub-verwaltet: komplett ignorieren
+data/crowdsec/config/hub/
+data/crowdsec/config/parsers/
+data/crowdsec/config/scenarios/
+data/crowdsec/config/collections/
+data/crowdsec/config/postoverflows/
+data/crowdsec/config/appsec-rules/
+data/crowdsec/config/patterns/
+data/crowdsec/config/notifications/
+
+# Credentials nie committen
+data/crowdsec/config/*credentials*
+
+# Echte YAML-Configs ignorieren, nur .sample versionieren.
+# Beide Endungen: CrowdSec akzeptiert .yaml und .yml (in acquis.d/ üblich).
+data/crowdsec/config/*.yaml
+data/crowdsec/config/*.yml
+data/crowdsec/config/acquis.d/*.yaml
+data/crowdsec/config/acquis.d/*.yml
+data/crowdsec/config/appsec-configs/*.yaml
+data/crowdsec/config/appsec-configs/*.yml
+!**/*.sample
+
 data/crowdsec/data
+data/crowdsec/.env
+
 data/traefik/traefik.yml
 data/traefik/dynamic_conf/*.yml
 data/traefik/dynamic_conf/*.yaml
+data/traefik/.env
+# angepasst: deckt zusätzlich dns_letsencrypt.json ab
+data/traefik/certs/*.json
+
+data/socket-proxy/.env
+
+temp/
