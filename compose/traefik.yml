@@ -7,6 +7,10 @@ services:
       socket-proxy:
         condition: service_healthy
     env_file: ${ABSOLUTE_PATH}/data/traefik/.env
+    environment:
+      # angepasst: LAPI-Key des nativen Plugin-Bouncers in den Container reichen,
+      # damit '{{ env "BOUNCER_KEY_TRAEFIK" }}' im File-Provider aufloesen kann.
+      - BOUNCER_KEY_TRAEFIK=${BOUNCER_KEY_TRAEFIK}
     hostname: ${SERVICES_TRAEFIK_HOSTNAME:-traefik}
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]

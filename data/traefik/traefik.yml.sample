@@ -67,3 +67,11 @@ accessLog:
   bufferingSize: 50
   fields:
     defaultMode: keep
+
+# angepasst: nativer Plugin-Bouncer statt ForwardAuth-Container.
+# Version bewusst gepinnt, damit Updates kontrolliert erfolgen.
+experimental:
+  plugins:
+    bouncer:
+      moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
+      version: v1.7.1
