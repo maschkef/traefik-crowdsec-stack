@@ -20,7 +20,7 @@ Als erstes müssen Sie das Repository auf Ihren Server klonen:
 
 ```bash
 mkdir -p /opt/containers/
-git clone https://github.com/psycho0verload/traefik-crowdsec-stack /opt/containers/traefik-crowdsec-stack
+git clone https://github.com/maschkef/traefik-crowdsec-stack /opt/containers/traefik-crowdsec-stack
 cd /opt/containers/traefik-crowdsec-stack
 sudo chmod +x first_install.sh
 sudo ./first_install.sh
@@ -108,9 +108,9 @@ Ohne gültiges Token schlägt die Zertifikatsausstellung fehl.
 
     `lego` (die ACME-Bibliothek von Traefik) muss den Domainnamen zunächst zu einer internen Zone-ID auflösen. Dafür reicht `DNS:Edit` allein nicht.
 3. Zone Resources: **Include / All zones** (nicht auf eine einzelne Zone einschränken).
-4. Token erzeugen und in die `.env` eintragen:
+4. Token erzeugen und in die `.env` eintragen (ersetzt den vorhandenen leeren Platzhalter aus `.env.sample`, statt eine zweite Zeile anzuhängen):
     ```bash
-    echo 'CF_DNS_API_TOKEN=<hier-Token-einfuegen>' >> .env
+    sed -i "s|^CF_DNS_API_TOKEN=.*|CF_DNS_API_TOKEN=<hier-Token-einfuegen>|" .env
     ```
 
 **Warnungen:**
@@ -143,16 +143,16 @@ Ohne gültiges Token schlägt die Zertifikatsausstellung fehl.
 
 2. `acquis.yaml` wurde bereits aus dem Sample kopiert (Schritt 4) und deckt `auth.log`/`syslog` sowie Traefik-Access-Log ab. Zusätzliche Datenquellen bitte nicht hier, sondern in separaten Dateien unter `data/crowdsec/config/acquis.d/` ablegen (CrowdSec lädt das Verzeichnis automatisch).
 
-3. AppSec-Konfiguration: Die für `data/crowdsec/config/acquis.d/appsec.yaml` benötigten Hub-Items werden bereits beim ersten CrowdSec-Start automatisch installiert (siehe `COLLECTIONS` und `APPSEC_CONFIGS` in `data/crowdsec/.env`). Beim Bearbeiten von `acquis.d/appsec.yaml` darauf achten, dass alle unter `appsec_configs:` referenzierten Namen entweder aus dem Hub installiert werden oder als lokale Datei existieren (z. B. `custom/hooks` → `data/crowdsec/config/appsec-configs/custom-hooks.yaml`).
+3. AppSec-Konfiguration: Die für `data/crowdsec/config/acquis.d/appsec.yaml` benötigten Hub-Items werden bereits beim ersten CrowdSec-Start automatisch installiert (siehe `COLLECTIONS`, `APPSEC_CONFIGS` und `APPSEC_RULES` in `data/crowdsec/.env`). Zusätzlich zu `COLLECTIONS` und `APPSEC_CONFIGS` müssen ggf. appsec-rules über `APPSEC_RULES` installiert werden — z. B. `crowdsecurity/crs` für die `crs-inband`-Config, da diese intern das entsprechende Regel-Bundle referenziert und es nicht Teil von `appsec-virtual-patching`/`appsec-generic-rules` ist. Beim Bearbeiten von `acquis.d/appsec.yaml` darauf achten, dass alle unter `appsec_configs:` referenzierten Namen entweder aus dem Hub installiert werden oder als lokale Datei existieren (z. B. `custom/hooks` → `data/crowdsec/config/appsec-configs/custom-hooks.yaml`).
 
 4. In `data/crowdsec/config/appsec-configs/custom-hooks.yaml` die Platzhalter `<IP-1>`, `<IP-2>`, `<IP-3>` durch die IPs Ihrer vertrauenswürdigen internen Automatisierungs-Hosts ersetzen (z. B. Watchtower/shoutrrr-Absender, die an ntfy melden). Nicht benötigte Platzhalter entfernen; die gesamte Regel entfernen, wenn Sie keine solchen Ausnahmen brauchen.
 
-5. Bouncer-Keys erzeugen. Traefik-Plugin- und Firewall-Bouncer bekommen je einen eigenen Key. Die Keys werden in die `.env` geschrieben und beim ersten Start des CrowdSec-Containers über die `BOUNCER_KEY_*`-Umgebungsvariablen automatisch als Bouncer registriert:
+5. Bouncer-Keys erzeugen. Traefik-Plugin- und Firewall-Bouncer bekommen je einen eigenen Key. Die Keys werden in die `.env` geschrieben und beim ersten Start des CrowdSec-Containers über die `BOUNCER_KEY_*`-Umgebungsvariablen automatisch als Bouncer registriert. Die `sed`-Befehle ersetzen die vorhandenen leeren Platzhalter aus `.env.sample`, statt eine zweite Zeile anzuhängen:
     ```bash
     BOUNCER_KEY_TRAEFIK=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)
     BOUNCER_KEY_FIREWALL=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)
-    echo "BOUNCER_KEY_TRAEFIK=$BOUNCER_KEY_TRAEFIK" >> .env
-    echo "BOUNCER_KEY_FIREWALL=$BOUNCER_KEY_FIREWALL" >> .env
+    sed -i "s|^BOUNCER_KEY_TRAEFIK=.*|BOUNCER_KEY_TRAEFIK=$BOUNCER_KEY_TRAEFIK|" .env
+    sed -i "s|^BOUNCER_KEY_FIREWALL=.*|BOUNCER_KEY_FIREWALL=$BOUNCER_KEY_FIREWALL|" .env
     ```
     Die `tr -dc 'A-Za-z0-9'`-Filterung verhindert Sonderzeichen wie `+`, `/`, `=`, die in `.env`-Werten oder URLs Probleme machen. Zur Kontrolle nach dem nächsten Start:
     ```bash
@@ -225,7 +225,7 @@ https://traefik.yourdomain.com
 
 ---
 
-## Abweichungen vom Upstream
+## Abweichungen vom Upstream (Stand 19.09.2026)
 
 Dieser Fork weicht in folgenden Punkten von `Psycho0verload/traefik-crowdsec-stack` (main) ab:
 

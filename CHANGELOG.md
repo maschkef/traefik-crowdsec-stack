@@ -129,3 +129,53 @@ Diese Datei dokumentiert die Abweichungen dieses Forks gegenüber
 - Ergänzt: `data/traefik/certs/*.json` (deckt `dns_letsencrypt.json`
   ab), `data/traefik/.env`, `data/socket-proxy/.env`,
   `data/crowdsec/.env`.
+
+## Nachbesserungen an eigenen Fork-Änderungen
+
+Die folgenden Punkte sind **keine** Fixes für Upstream-Bugs, sondern
+Nachbesserungen an Regressionen, die durch die weiter oben gelisteten
+Fork-Umbauten (DNS-01, `.env.sample`-Platzhalter, AppSec-Basiskonfiguration)
+erst entstanden sind. Beim ersten End-to-End-Test aufgefallen.
+
+### `.env`-Handling (Installations-Skript + README)
+
+- Ursache: Durch die neu eingeführten leeren Platzhalter für
+  `BOUNCER_KEY_TRAEFIK`, `BOUNCER_KEY_FIREWALL` und `CF_DNS_API_TOKEN`
+  in `.env.sample` (siehe Added → `.env`-Variablen) erzeugten die
+  bisherigen `>>`-Appends in `first_install.sh` und README jeweils
+  eine zweite Zeile mit demselben Schlüssel. Docker Compose nahm zwar
+  den letzten Wert, die Datei war aber unsauber und nicht idempotent
+  (jeder Rerun verdoppelte weiter).
+- Neue Helper-Funktion `upsert_env` in `first_install.sh`: ersetzt
+  einen vorhandenen `KEY=`-Eintrag per `sed -i` in place (Delimiter
+  `|`, Anker `^KEY=`) und fällt nur auf `>>` zurück, wenn der Key
+  gar nicht existiert. Damit bleibt `.env.sample` als self-documenting
+  Template erhalten und die `.env` bleibt duplikatfrei.
+- README-Snippets für `CF_DNS_API_TOKEN` (Schritt 5.1) und
+  Bouncer-Keys (Schritt 6.5) analog auf `sed -i` umgestellt.
+
+### CrowdSec startet nicht (AppSec-Rule fehlt)
+
+- Ursache: Die im Fork neu hinzugekommene AppSec-Konfiguration
+  (siehe Added → CrowdSec-Basiskonfiguration) referenziert
+  `crowdsecurity/crs-inband` in `APPSEC_CONFIGS` und in
+  `data/crowdsec/config/acquis.d/appsec.yaml`. Dieses AppSec-Config
+  verweist intern auf die appsec-rule `crowdsecurity/crs`, die aber
+  weder von den installierten Collections
+  (`appsec-virtual-patching`, `appsec-generic-rules`) noch anderweitig
+  mit installiert wird. Ergebnis beim Start:
+  `no appsec-rules found for pattern crowdsecurity/crs`.
+- Fix: In `data/crowdsec/.env.sample`
+  `APPSEC_RULES="crowdsecurity/crs"` aktiviert.
+- README-Abschnitt 6.3 (AppSec) um einen Hinweis auf `APPSEC_RULES`
+  ergänzt.
+
+### Fehlender Cloudflare-Token-Prompt in `first_install.sh`
+
+- Ursache: Mit dem Umstieg auf DNS-01 wurde `CF_DNS_API_TOKEN` als
+  Platzhalter in `.env.sample` neu eingeführt, aber im
+  Installations-Skript nie abgefragt.
+- Neuer Schritt `Frage nach Cloudflare-API-Token (CF_DNS_API_TOKEN)`
+  mit interaktivem Prompt, Nicht-Leer-Validierung und Bestätigung
+  analog zum bestehenden E-Mail-Schritt. Der Wert wird via
+  `upsert_env` in `.env` gesetzt. `total_steps` von 18 auf 19 erhöht.

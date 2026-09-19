@@ -16,8 +16,21 @@ step_done() {
     echo -e "${green}✓ $1 abgeschlossen${nc}"
 }
 
+# Setzt einen Schluessel=Wert in einer .env-Datei idempotent: existiert der
+# Schluessel bereits (auch mit leerem Wert wie in .env.sample), wird er per
+# sed in-place ersetzt; sonst wird er angehaengt. Verhindert Duplikate wie
+# einen leeren Platzhalter plus einen zweiten befuellten Eintrag.
+upsert_env() {
+    local key="$1" val="$2" file="$3"
+    if grep -q "^${key}=" "$file"; then
+        sed -i "s|^${key}=.*|${key}=${val}|" "$file"
+    else
+        echo "${key}=${val}" >> "$file"
+    fi
+}
+
 # Gesamtschritte für das Skript festlegen
-total_steps=18
+total_steps=19
 current_step=1
 
 # Setze das Arbeitsverzeichnis auf das Verzeichnis, in dem das Skript liegt
@@ -165,11 +178,36 @@ step_done "OpenSSL überprüft"
 # machen (z. B. beim Parsen der crowdsecLapiKey-Header).
 show_step $current_step $total_steps "Generiere Bouncer-Passwörter"
 BOUNCER_KEY_TRAEFIK_PASSWORD=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)
-echo -e "\nBOUNCER_KEY_TRAEFIK=$BOUNCER_KEY_TRAEFIK_PASSWORD" >> ${SCRIPT_DIR}/.env
+upsert_env BOUNCER_KEY_TRAEFIK "$BOUNCER_KEY_TRAEFIK_PASSWORD" "${SCRIPT_DIR}/.env"
 sleep 3
 BOUNCER_KEY_FIREWALL_PASSWORD=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)
-echo "BOUNCER_KEY_FIREWALL=$BOUNCER_KEY_FIREWALL_PASSWORD" >> ${SCRIPT_DIR}/.env
+upsert_env BOUNCER_KEY_FIREWALL "$BOUNCER_KEY_FIREWALL_PASSWORD" "${SCRIPT_DIR}/.env"
 step_done "Bouncer-Passwörter generiert"
+((current_step++))
+
+# Cloudflare-API-Token fuer DNS-01 (Let's Encrypt via lego).
+# Ohne Token schlaegt spaeter die Zertifikatsausstellung fehl. Details und
+# Anforderungen an das Token (Zone:Read + DNS:Edit, alle Zonen) siehe README.
+show_step $current_step $total_steps "Frage nach Cloudflare-API-Token (CF_DNS_API_TOKEN)"
+while true; do
+  read -r -p "Bitte gib deinen Cloudflare-API-Token ein (Zone:Read + DNS:Edit): " cf_token
+  if [ -z "$cf_token" ]; then
+    echo -e "${red}Der Token darf nicht leer sein. Bitte erneut eingeben.${nc}"
+    continue
+  fi
+
+  read -p "Diesen Token verwenden? [y/n, Standard: y]: " confirm_cf_token
+  confirm_cf_token=${confirm_cf_token:-y}
+  confirm_cf_token=$(echo "$confirm_cf_token" | tr '[:upper:]' '[:lower:]')
+
+  if [ "$confirm_cf_token" == "y" ]; then
+    upsert_env CF_DNS_API_TOKEN "$cf_token" "${SCRIPT_DIR}/.env"
+    break
+  else
+    echo -e "${yellow}Token verworfen. Bitte erneut eingeben.${nc}"
+  fi
+done
+step_done "Cloudflare-API-Token gesetzt"
 ((current_step++))
 
 # E-Mail-Adresse für SSL-Zertifikate
