@@ -11,8 +11,11 @@ tls:
         - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
         - TLS_AES_128_GCM_SHA256
         - TLS_AES_256_GCM_SHA384
-        - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+        # angepasst: TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA entfernt (Legacy-CBC-Cipher).
       curvePreferences:
-        - CurveP521
+        # angepasst: CurveP521 entfernt, CurveP256 ergänzt.
+        # ergänzt: X25519 gemäß Mozilla-Intermediate-Empfehlung (moderne Clients bevorzugen sie).
+        - X25519
+        - CurveP256
         - CurveP384
       sniStrict: true
