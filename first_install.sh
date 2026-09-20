@@ -29,8 +29,29 @@ upsert_env() {
     fi
 }
 
+# Grobe CIDR-Validierung fuer IPv4 und IPv6. Reine Tippfehler-Bremse — die
+# semantische Validierung uebernimmt spaeter Traefik beim Start (z. B. wird
+# ein ungueltiges Oktett wie 300.0.0.0/8 hier durchgelassen).
+is_cidr() {
+    [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$ ]] || \
+    [[ "$1" =~ ^[0-9a-fA-F:]+/[0-9]{1,3}$ ]]
+}
+
+# Fuegt einen mehrzeiligen Block direkt hinter einer Anker-Zeile in eine Datei
+# ein (in-place, via `sed r`). Der Anker-Regex muss die Zeile eindeutig
+# treffen; bei mehrfachem Match wuerde der Block hinter jedem Vorkommen
+# eingefuegt.
+insert_after_line() {
+    local anchor_regex="$1" block="$2" file="$3"
+    local tmp
+    tmp=$(mktemp)
+    printf '%s\n' "$block" > "$tmp"
+    sed -i "/${anchor_regex}/r ${tmp}" "$file"
+    rm -f "$tmp"
+}
+
 # Gesamtschritte für das Skript festlegen
-total_steps=19
+total_steps=21
 current_step=1
 
 # Setze das Arbeitsverzeichnis auf das Verzeichnis, in dem das Skript liegt
@@ -208,6 +229,129 @@ while true; do
   fi
 done
 step_done "Cloudflare-API-Token gesetzt"
+((current_step++))
+
+# Optional: proxyProtocol.trustedIPs am websecure-Entrypoint.
+# Noetig, wenn Traefik hinter einem TCP-/Stream-Reverse-Proxy mit
+# PROXY-Protocol sitzt (z. B. nginx 'stream {}' mit 'proxy_protocol on;').
+# Ohne diesen Block liest Traefik den PROXY-Header als TLS-Bytes und der
+# Handshake bricht mit "record too long" ab.
+show_step $current_step $total_steps "Optional: proxyProtocol.trustedIPs (vorgelagerter TCP-Proxy)"
+echo "Sitzt Traefik hinter einem vorgelagerten TCP-Reverse-Proxy, der das"
+echo "PROXY-Protocol vorne dranhaengt (z. B. nginx 'stream {}' mit"
+echo "'proxy_protocol on;')? Wenn ja, muss dessen Absender-IP hier als"
+echo "vertrauenswuerdig eingetragen werden, sonst schlaegt der TLS-Handshake"
+echo "am websecure-Entrypoint fehl."
+read -p "proxyProtocol.trustedIPs jetzt konfigurieren? [y/n, Standard: n]: " enable_pp
+enable_pp=${enable_pp:-n}
+enable_pp=$(echo "$enable_pp" | tr '[:upper:]' '[:lower:]')
+
+if [ "$enable_pp" == "y" ]; then
+    while true; do
+        read -r -p "trustedIPs als CIDR, kommagetrennt (z. B. 10.0.0.5/32,192.168.1.10/32): " pp_input
+        if [ -z "$pp_input" ]; then
+            echo -e "${red}Eingabe darf nicht leer sein.${nc}"
+            continue
+        fi
+        IFS=',' read -ra pp_arr <<< "$pp_input"
+        all_ok=1
+        for c in "${pp_arr[@]}"; do
+            c_trim=$(echo "$c" | xargs)
+            if ! is_cidr "$c_trim"; then
+                echo -e "${red}Ungueltiger CIDR: '$c_trim'${nc}"
+                all_ok=0
+                break
+            fi
+        done
+        [ $all_ok -eq 1 ] && break
+    done
+    # Einrueckung passt zum bestehenden http3:-Level: 4 Spaces fuer den
+    # Top-Level-Key (Peer von address:, http3:, http:), 6 Spaces fuer
+    # trustedIPs:, 8 Spaces fuer die Listeneintraege.
+    pp_block="    proxyProtocol:"$'\n'"      trustedIPs:"
+    for c in "${pp_arr[@]}"; do
+        c_trim=$(echo "$c" | xargs)
+        pp_block+=$'\n'"        - \"${c_trim}\""
+    done
+    insert_after_line "^    http3: {}$" "$pp_block" "${SCRIPT_DIR}/data/traefik/traefik.yml"
+    step_done "proxyProtocol.trustedIPs gesetzt"
+else
+    echo "Uebersprungen."
+    step_done "proxyProtocol optional — nicht aktiviert"
+fi
+((current_step++))
+
+# Optional: forwardedHeaders.trustedIPs mit Cloudflare-Ranges.
+# Noetig, wenn Traefik hinter Cloudflare (orange cloud) oder einem anderen
+# HTTP-Layer-Proxy sitzt, damit X-Forwarded-For / CF-Connecting-IP als
+# vertrauenswuerdig ausgewertet werden. Andere HTTP-Layer-Proxys muss der
+# User selbst manuell nachtragen — dieser Schritt deckt gezielt Cloudflare
+# ab (haeufigster Anwendungsfall).
+show_step $current_step $total_steps "Optional: forwardedHeaders.trustedIPs (Cloudflare)"
+echo "Sitzt Traefik hinter Cloudflare (orange cloud) und sollen die"
+echo "Cloudflare-Ranges als vertrauenswuerdig fuer X-Forwarded-For gelten?"
+read -p "forwardedHeaders.trustedIPs mit Cloudflare-Ranges konfigurieren? [y/n, Standard: n]: " enable_fh
+enable_fh=${enable_fh:-n}
+enable_fh=$(echo "$enable_fh" | tr '[:upper:]' '[:lower:]')
+
+if [ "$enable_fh" == "y" ]; then
+    read -p "Aktuelle Ranges automatisch von cloudflare.com/ips-v4|-v6 abrufen? [y/n, Standard: y]: " auto_fetch
+    auto_fetch=${auto_fetch:-y}
+    auto_fetch=$(echo "$auto_fetch" | tr '[:upper:]' '[:lower:]')
+
+    cf_v4=""
+    cf_v6=""
+    used_fallback=0
+    if [ "$auto_fetch" == "y" ]; then
+        cf_v4=$(curl -sSf --max-time 10 https://www.cloudflare.com/ips-v4 2>/dev/null) || cf_v4=""
+        cf_v6=$(curl -sSf --max-time 10 https://www.cloudflare.com/ips-v6 2>/dev/null) || cf_v6=""
+        if [ -z "$cf_v4" ] || [ -z "$cf_v6" ]; then
+            echo -e "${yellow}Abruf fehlgeschlagen — verwende hardcodierten Fallback (Stand 31.08.2026).${nc}"
+            used_fallback=1
+        fi
+    fi
+
+    if [ "$auto_fetch" != "y" ] || [ $used_fallback -eq 1 ]; then
+        # Fallback-Liste, Stand 31.08.2026, Quelle: https://www.cloudflare.com/ips
+        cf_v4="173.245.48.0/20
+103.21.244.0/22
+103.22.200.0/22
+103.31.4.0/22
+141.101.64.0/18
+108.162.192.0/18
+190.93.240.0/20
+188.114.96.0/20
+197.234.240.0/22
+198.41.128.0/17
+162.158.0.0/15
+104.16.0.0/13
+104.24.0.0/14
+172.64.0.0/13
+131.0.72.0/22"
+        cf_v6="2400:cb00::/32
+2606:4700::/32
+2803:f800::/32
+2405:b500::/32
+2405:8100::/32
+2a06:98c0::/29
+2c0f:f248::/32"
+    fi
+
+    fh_block="    forwardedHeaders:"$'\n'"      trustedIPs:"
+    while IFS= read -r ip; do
+        [ -z "$ip" ] && continue
+        fh_block+=$'\n'"        - \"${ip}\""
+    done <<< "$cf_v4"
+    while IFS= read -r ip; do
+        [ -z "$ip" ] && continue
+        fh_block+=$'\n'"        - \"${ip}\""
+    done <<< "$cf_v6"
+    insert_after_line "^    http3: {}$" "$fh_block" "${SCRIPT_DIR}/data/traefik/traefik.yml"
+    step_done "forwardedHeaders.trustedIPs (Cloudflare) gesetzt"
+else
+    echo "Uebersprungen."
+    step_done "forwardedHeaders optional — nicht aktiviert"
+fi
 ((current_step++))
 
 # E-Mail-Adresse für SSL-Zertifikate

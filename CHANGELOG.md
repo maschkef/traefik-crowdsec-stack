@@ -112,6 +112,31 @@ Diese Datei dokumentiert die Abweichungen dieses Forks gegenüber
   `dns_letsencrypt.json` wird die Datei vorab mit `chmod 600` angelegt,
   damit lego sie nicht world-readable erstellt.
 
+### Optionale Entrypoint-Konfiguration für vorgelagerte Reverse-Proxys
+
+- Neuer optionaler Block `proxyProtocol.trustedIPs` am
+  `websecure`-Entrypoint für Setups, in denen Traefik hinter einem
+  TCP-Reverse-Proxy mit PROXY-Protocol sitzt (z. B. nginx `stream {}` mit
+  `proxy_protocol on;`). Ohne diesen Block schlägt der TLS-Handshake mit
+  „record too long" fehl, weil Traefik die PROXY-Bytes als TLS-Handshake
+  liest. Wird in `data/traefik/traefik.yml` eingefügt; bewusst **nicht**
+  im Sample, da nur in bestimmten Netzwerktopologien korrekt und
+  security-relevant (jede IP hier darf beliebige Client-IP behaupten).
+- Neuer optionaler Block `forwardedHeaders.trustedIPs` mit den
+  Cloudflare-IPv4/IPv6-Ranges für Setups mit Cloudflare orange cloud vor
+  Traefik. Ohne diesen Block wertet der CrowdSec-Bouncer die Proxy-IP als
+  Client-IP statt der tatsächlichen Client-IP.
+- `first_install.sh` fragt beide Optionen einzeln ab (Standard: n),
+  akzeptiert für proxyProtocol eine kommagetrennte CIDR-Liste, und holt
+  für forwardedHeaders die Cloudflare-Ranges auf Wunsch live von
+  `https://www.cloudflare.com/ips-v4|-v6` (Fallback: hardcodierte Liste
+  Stand 31.08.2026). `total_steps` von 19 auf 21 erhöht. Zwei neue
+  Helper: `is_cidr` (grobe CIDR-Validierung) und `insert_after_line`
+  (mehrzeiliges `sed r`-Insert nach Anker-Zeile).
+- README-Abschnitte 5.3 und 5.4 dokumentieren beide Blöcke separat inkl.
+  „Wann nötig / wann nicht"-Trennung und Sicherheitshinweisen.
+  „Pro Host anzupassen"-Tabelle um beide Optionen ergänzt.
+
 ## Removed
 
 - `compose/traefik-crowdsec-bouncer.yml` und

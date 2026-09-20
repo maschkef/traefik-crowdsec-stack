@@ -133,6 +133,65 @@ Ohne gültiges Token schlägt die Zertifikatsausstellung fehl.
     SERVICES_TRAEFIK_LABELS_TRAEFIK_HOST=HOST(`traefik.yourdomain.com`)
     ```
 
+#### 5.3 Optional: `proxyProtocol.trustedIPs` (Layer 4 — TCP-Reverse-Proxy vorne dran)
+
+**Nur einbauen, wenn Traefik hinter einem vorgelagerten TCP-/Stream-Reverse-Proxy sitzt**, der das PROXY-Protocol vorne dranhängt — z. B. nginx `stream {}` mit `proxy_protocol on;`, HAProxy mit `send-proxy`. Der Proxy prependet die ursprüngliche Client-IP als PROXY-Protocol-Header auf die Verbindung, bevor die TLS-Bytes kommen.
+
+- **Symptom bei fehlender Konfiguration:** Firefox „Secure Connection Failed — SSL received a record that exceeded the maximum permissible length", curl `error:0A00010B:SSL routines::wrong version number`. Traefik interpretiert die PROXY-Bytes als TLS-Handshake und bricht sofort ab.
+- **Wann NICHT einbauen:** Traefik ist direkt aus dem Internet erreichbar, oder der vorgelagerte Proxy terminiert TLS selbst und spricht plain HTTP mit Traefik.
+
+Den folgenden Block in `data/traefik/traefik.yml` unter `entryPoints.websecure`, direkt hinter `http3: {}`, einfügen:
+
+```yaml
+  websecure:
+    address: ':443'
+    http3: {}
+    proxyProtocol:
+      trustedIPs:
+        - "10.0.0.5/32"       # anpassen: IP(s) deines vorgelagerten TCP-Proxys
+    http:
+      middlewares:
+        - default@file
+        - traefik-bouncer@file
+```
+
+(Einrückung: `proxyProtocol:` ist Peer von `address:`, `http3:` und `http:` — also 4 Spaces; `trustedIPs:` darunter 6 Spaces, Listeneinträge 8 Spaces.)
+
+**Sicherheitshinweis:** Jede IP in `trustedIPs` darf beliebige Client-IPs behaupten. Nur Peers eintragen, die Sie kontrollieren; kein `0.0.0.0/0`.
+
+#### 5.4 Optional: `forwardedHeaders.trustedIPs` (Layer 7 — HTTP-Proxy davor, z. B. Cloudflare)
+
+**Nur einbauen, wenn Traefik HTTP von einem HTTP-Layer-Proxy empfängt**, der bereits `X-Forwarded-For` / `X-Real-IP` setzt — Cloudflare (orange cloud), Caddy davor, ein weiterer Traefik/nginx als HTTP-Reverse-Proxy. Ohne diesen Eintrag ignoriert Traefik den Header als untrusted; der CrowdSec-Bouncer sieht dann als „Client" den vorgelagerten Proxy und würde im Zweifel dessen IP blockieren, nicht die des tatsächlichen Angreifers.
+
+- **Wann NICHT einbauen:** Kein HTTP-Layer-Proxy zwischen Client und Traefik.
+
+Aktuelle Cloudflare-Ranges beziehen (Cloudflare ändert die Liste selten, aber nicht nie — 1× im Jahr prüfen):
+
+```bash
+curl -s https://www.cloudflare.com/ips-v4
+curl -s https://www.cloudflare.com/ips-v6
+```
+
+Den folgenden Block in `data/traefik/traefik.yml` unter `entryPoints.websecure`, direkt hinter `http3: {}`, einfügen (unabhängig von 5.3 — beide können parallel gesetzt sein):
+
+```yaml
+  websecure:
+    address: ':443'
+    http3: {}
+    forwardedHeaders:
+      trustedIPs:
+        # Stand: <Datum> — aktuelle Liste: https://www.cloudflare.com/ips
+        - "173.245.48.0/20"
+        - "103.21.244.0/22"
+        # ... (alle IPv4- und IPv6-Ranges)
+    http:
+      middlewares:
+        - default@file
+        - traefik-bouncer@file
+```
+
+**Sicherheitshinweis:** Nur die tatsächlichen Proxy-Ranges eintragen. Trifft ein Angreifer die Origin-IP direkt (Cloudflare-Bypass), stammt er nicht aus einer CF-IP, `trustedIPs` greift nicht, und Traefik verwirft seinen (evtl. gefälschten) `X-Forwarded-For` korrekterweise — das ist erwünscht.
+
 ### 6. CrowdSec konfigurieren
 
 1. CrowdSec initial starten und wieder stoppen (erzeugt Verzeichnisstruktur und Hub-Cache):
@@ -250,6 +309,8 @@ Beim Aufsetzen des Stacks auf einem neuen Host sind mindestens folgende Werte ho
 | Firewall-Bouncer `api_url` | `/etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml` | Adressiert den `crowdsec`-Container über das jeweilige Docker-Netz |
 | AppSec-Custom-Hooks-IPs | `data/crowdsec/config/appsec-configs/custom-hooks.yaml` | Vertrauenswürdige interne Automatisierungs-Hosts |
 | `forwardedHeadersCustomName` | `data/traefik/dynamic_conf/http.middlewares.traefik-bouncer.yml` | Standardwert `CF-Connecting-IP` setzt Cloudflare-Proxy voraus (orange cloud). Ohne Proxy leer lassen oder auf den tatsächlich verwendeten Header umstellen |
+| `proxyProtocol.trustedIPs` (optional) | `data/traefik/traefik.yml` | Nur wenn Traefik hinter TCP-Reverse-Proxy mit PROXY-Protocol steht. Sicherheitsrelevant: jede IP darf beliebige Client-IP behaupten. Siehe 5.3 |
+| `forwardedHeaders.trustedIPs` (optional) | `data/traefik/traefik.yml` | Nur wenn Traefik hinter HTTP-Layer-Proxy (z. B. Cloudflare orange cloud) steht. Aktuelle CF-Ranges: `cloudflare.com/ips`. Siehe 5.4 |
 | ggf. Docker-Netzwerke | Compose-Dateien / Override | Wenn bereits andere Stacks Netz-Namen belegen |
 | ggf. statische Backend-IPs | `data/traefik/dynamic_conf/` | Nur wenn Router auf feste IPs zeigen |
 
